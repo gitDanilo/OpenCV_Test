@@ -77,5 +77,8 @@
     <Image Include="Images\hi.PNG">
       <Filter>Images</Filter>
     </Image>
+    <Image Include="Images\teste.png">
+      <Filter>Images</Filter>
+    </Image>
   </ItemGroup>
 </Project>
