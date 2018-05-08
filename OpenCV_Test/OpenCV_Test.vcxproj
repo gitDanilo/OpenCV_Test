@@ -121,6 +121,26 @@
   <ItemGroup>
     <ClCompile Include="Source.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <Image Include="Images\arconotavel.png" />
+    <Image Include="Images\arconotavel2.png" />
+    <Image Include="Images\arconotavel3.png" />
+    <Image Include="Images\center.PNG" />
+    <Image Include="Images\hi.PNG" />
+    <Image Include="Images\myhand.jpg" />
+    <Image Include="Images\myhand10.jpg" />
+    <Image Include="Images\myhand11.jpg" />
+    <Image Include="Images\myhand12.jpg" />
+    <Image Include="Images\myhand13.jpg" />
+    <Image Include="Images\myhand2.jpg" />
+    <Image Include="Images\myhand3.jpg" />
+    <Image Include="Images\myhand4.jpg" />
+    <Image Include="Images\myhand5.jpg" />
+    <Image Include="Images\myhand6.jpg" />
+    <Image Include="Images\myhand7.jpg" />
+    <Image Include="Images\myhand8.jpg" />
+    <Image Include="Images\myhand9.jpg" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
