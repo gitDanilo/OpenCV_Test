@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_PropertySheetDisplayName>OpenCV_Debug341</_PropertySheetDisplayName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(OPENCV_DIR)\..\..\include</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(OPENCV_DIR)\..\..\3rdparty\ippicv\ippicv_win\lib\ia32;$(OPENCV_DIR)\..\..\3rdparty\lib\Debug;$(OPENCV_DIR)\..\..\lib\Debug</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opencv_stitching341d.lib;opencv_videostab341d.lib;opencv_calib3d341d.lib;opencv_ts341d.lib;opencv_features2d341d.lib;opencv_highgui341d.lib;opencv_superres341d.lib;opencv_dnn341d.lib;opencv_videoio341d.lib;opencv_shape341d.lib;opencv_imgcodecs341d.lib;opencv_objdetect341d.lib;opencv_photo341d.lib;opencv_video341d.lib;opencv_imgproc341d.lib;opencv_flann341d.lib;opencv_ml341d.lib;opencv_core341d.lib;IlmImfd.lib;libprotobufd.lib;libtiffd.lib;libpngd.lib;libjasperd.lib;libwebpd.lib;libjpegd.lib;ippiwd.lib;zlibd.lib;ittnotifyd.lib;ippicvmt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup />
+</Project>
