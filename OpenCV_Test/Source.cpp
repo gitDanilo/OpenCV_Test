@@ -8,63 +8,51 @@ using namespace std;
 using namespace cv;
 
 #define MAX_DISTANCE 9999.0
-#define MAX_PALM_POINTS 7
-#define MIN_DIST_THRESHOLD 25
-#define MAX_DIST_THRESHOLD 60
-#define MIN_HAND_DEFECTS 4
-#define MAX_HAND_DEFECTS 5
-#define MIN_LENGTH_VARIATION 20
-#define MAX_LENGTH_VARIATION 240
-#define MIN_INNER_ANGLE 15
-#define MAX_INNER_ANGLE 115
+
+#define MIN_HAND_DEFECTS 4 // min 4 hand defects, one between each finger
+#define MAX_HAND_DEFECTS 5 // max number of palm points
+#define DELTA_LENGTH 0.7f
+
+// Hand defect thresholds
+#define MIN_FINGER_WIDTH 25
+#define MAX_FINGER_WIDTH 60
+#define MIN_FINGER_LENGTH 60
+#define MAX_FINGER_LENGTH 220
+#define MIN_INNER_ANGLE 15 // min angle formed by the hand defect
+#define MAX_INNER_ANGLE 115 // max angle formed by the hand defect
+
+// Palm thresholds
+#define MIN_PALM_LENGTH 10
+#define MAX_PALM_LENGTH 220
 #define MIN_PALM_INNER_ANGLE 10
-#define MAX_PALM_INNER_ANGLE 175
+#define MAX_PALM_INNER_ANGLE 179
 
 typedef struct _HandDefect
 {
 	// startPoint, endPoint, farthestPoint points returned by convexityDefects
-	Point2d startPoint;
-	Point2d endPoint;
-	Point2d farthestPoint;
-	double innerAngle; // angle of the farthestPoint in a triangle (startPoint, endPoint, farthestPoint)
-	// centAngle[0] represents the atang angle of the mCenter point with startPoint
-	// centAngle[1] represents the atang angle of the mCenter point with endPoint
-	double centAngle[2];
-	// unitCircle[0] represents the unit circle of the startPoint
-	// unitCircle[0] represents the unit circle of the endPoint
-	int unitCircle[2];
-	double length; // distance of startPoint to farthestPoint
+	Point2f startPoint;
+	Point2f endPoint;
+	Point2f farthestPoint;
+	float length;
 } HandDefect, *PHandDefect;
 
-//static const int mUnitCircleIndexes[4][2] = {{0, 1}, {0, 2}, {3, 1}, {3, 2}};
 static const Scalar mMinHSV(0, 30, 60), mMaxHSV(20, 150, 255); // HSV of avarage human skin tone
 static const Size mSize(624, 832); // size of the displayed image
-static Point2f mCenter; // center of the unit circle
+// Method 1 of detecting palm center
+static Point2f mPalmCenter;
+static float mPalmRadius;
+// Method 2 of detecting palm center
+static Point2f mPalmCenter2;
+static float mPalmRadius2;
 
 // Returns the distance of 2 points
-inline double distanceP2P(Point2d a, Point2d b)
+inline float distanceP2P(Point2f a, Point2f b)
 {
 	return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
 }
 
-// Returns the unit circle of an angle
-// 0 = 0°..90°
-// 1 = 90°..180°
-// 2 = -180°.. - 90°
-// 3 = -90°..0°
-inline int getUnitCircle(double a)
-{
-	if (a > 0.0 && a <= 90.0)
-		return 0;
-	if (a > 90.0 && a <= 180.0)
-		return 1;
-	if (a > -180.0 && a <= -90.0)
-		return 3;
-	//if (a > -90.0 && a <= 0)
-	return 2;
-}
-
-int find3ClosestPoints(const vector<Point2f> &points, double *d)
+// Returns the closest 3 points that respect the min and max threshold distances
+int find3ClosestPoints(const vector<Point2f> &points, float *d)
 {
 	if (points.size() < 4 && d == NULL)
 		return -1;
@@ -75,15 +63,15 @@ int find3ClosestPoints(const vector<Point2f> &points, double *d)
 	vector<Point2f>::size_type size;
 	i = size = points.size();
 
-	double shortestDist = MAX_DISTANCE;
-	double oldDist;
+	float shortestDist = MAX_DISTANCE;
+	float oldDist;
 	int result = -1;
 
 	for (; i > 0; --i)
 	{
 		oldDist = d[0];
 		d[0] = distanceP2P(points[i % size], points[(i - 1) % size]);
-		if (d[0] < MIN_DIST_THRESHOLD || d[0] > MAX_DIST_THRESHOLD)
+		if (d[0] < MIN_FINGER_WIDTH || d[0] > MAX_FINGER_WIDTH)
 		{
 			// skip next point because he will be invalid
 			d[0] = 0;
@@ -91,7 +79,7 @@ int find3ClosestPoints(const vector<Point2f> &points, double *d)
 			continue;
 		}
 		d[1] = oldDist > 0 ? oldDist : distanceP2P(points[i % size], points[(i + 1) % size]);
-		if (d[1] < MIN_DIST_THRESHOLD || d[1] > MAX_DIST_THRESHOLD)
+		if (d[1] < MIN_FINGER_WIDTH || d[1] > MAX_FINGER_WIDTH)
 			continue;
 
 		d[2] = d[0] + d[1];
@@ -106,33 +94,88 @@ int find3ClosestPoints(const vector<Point2f> &points, double *d)
 	return result;
 }
 
-// Returns the C angle on a triangle (A, B, C)
-double innerAngle(Point2d a, Point2d b, Point2d c)
+// Returns the closest 3 points that respect the min and max threshold distances
+int find3ClosestPoints(const PHandDefect defects, int defectsSize, float *d)
 {
-	double CAx = c.x - a.x;
-	double CAy = c.y - a.y;
-	double CBx = c.x - b.x;
-	double CBy = c.y - b.y;
+	if (defectsSize < 4 && d == NULL)
+		return -1;
+
+	d[0] = d[1] = d[2] = 0;
+
+	int i = defectsSize;
+	float shortestDist = MAX_DISTANCE;
+	float oldDist;
+	int result = -1;
+
+	for (; i > 0; --i)
+	{
+		oldDist = d[0];
+		d[0] = distanceP2P(defects[i % defectsSize].farthestPoint, defects[(i - 1) % defectsSize].farthestPoint);
+		if (d[0] < MIN_FINGER_WIDTH || d[0] > MAX_FINGER_WIDTH)
+		{
+			// skip next point because he will be invalid
+			d[0] = 0;
+			--i;
+			continue;
+		}
+		d[1] = oldDist > 0 ? oldDist : distanceP2P(defects[i % defectsSize].farthestPoint, defects[(i + 1) % defectsSize].farthestPoint);
+		if (d[1] < MIN_FINGER_WIDTH || d[1] > MAX_FINGER_WIDTH)
+			continue;
+
+		d[2] = d[0] + d[1];
+
+		if ((d[2]) < shortestDist)
+		{
+			shortestDist = d[2];
+			result = i % defectsSize;
+		}
+	}
+
+	return result;
+}
+
+// Returns the C angle on a triangle (A, B, C)
+float innerAngle(Point2f a, Point2f b, Point2f c)
+{
+	float CAx = c.x - a.x;
+	float CAy = c.y - a.y;
+	float CBx = c.x - b.x;
+	float CBy = c.y - b.y;
 
 	// https://www.mathsisfun.com/algebra/trig-cosine-law.html (The Law of Cosines)
-	double A = acos((CBx*CAx + CBy*CAy) / (sqrt(CBx*CBx + CBy*CBy) * sqrt(CAx*CAx + CAy*CAy))); // (a² + b² − c²) / 2
+	float A = acos((CBx*CAx + CBy*CAy) / (sqrt(CBx*CBx + CBy*CBy) * sqrt(CAx*CAx + CAy*CAy)));	// (a² + b² − c²) / 2
 																								// ( (sqrt( (Ax - Bx)*(Ax - Bx) + (Ay - By)*(Ay - By) ))² + (sqrt( (Ax - Cx)*(Ax - Cx) + (Ay - Cy)*(Ay - Cy) ))² − (sqrt( (Bx - Cx)*(Bx - Cx) + (By - Cy)*(By - Cy) ))²) / 2
 
-	return A * 180 / CV_PI;
+	return A * 180.0f / CV_PI;
 }
 
-// Returns arcTang of 2 points
-inline double arcTang(Point2d a, Point2d b)
+// Returns arcTang of 2 points in OpenCV space (inverted Y)
+inline float arcTang(Point2f a, Point2f b, bool rad)
 {
-	return atan2(a.y - b.y, a.x - b.x) * 180 / CV_PI;
+	return rad ? atan2(a.y - b.y, b.x - a.x) : atan2(a.y - b.y, b.x - a.x) * 180.0f / CV_PI;
 }
 
-// Displays the arcTang of mCenter and the cursor position on the image
+void draw(Mat &frame, const PHandDefect defects, int defectsSize)
+{
+	circle(frame, mPalmCenter, mPalmRadius, Scalar(255, 0, 0), 1);
+	circle(frame, mPalmCenter, 4, Scalar(255, 0, 0), 2);
+	for (int i = 0; i < defectsSize; ++i)
+	{
+		circle(frame, defects[i].startPoint, 4, Scalar(255, 0, 0), 2);
+		circle(frame, defects[i].endPoint, 4, Scalar(0, 255, 0), 2);
+		circle(frame, defects[i].farthestPoint, 4, Scalar(0, 0, 255), 2);
+		line(frame, defects[i].startPoint, defects[i].endPoint, Scalar(255, 0, 255), 1);
+		line(frame, defects[i].farthestPoint, defects[i].startPoint, Scalar(255, 0, 255), 1);
+		line(frame, defects[i].farthestPoint, defects[i].endPoint, Scalar(255, 0, 255), 1);
+	}
+}
+
+// Displays the arcTang of mPalmCenter and the cursor position on the image
 void CallbackFunc(int event, int x, int y, int flags, void* userdata)
 {
 	if (event == cv::EVENT_LBUTTONUP)
 	{
-		double angle = atan2(mCenter.y - y, mCenter.x - x) * 180 / CV_PI;
+		float angle = arcTang(mPalmCenter, Point2f(x, y), false);
 		cout << "angle: " << angle << endl;
 	}
 }
@@ -154,17 +197,17 @@ int main()
 	do
 	{
 		//cap >> frame;
-		img = imread("C:\\Users\\danil\\source\\repos\\OpenCV_Test\\Debug\\myhand.jpg", 1);
+		img = imread("C:\\Users\\danil\\source\\repos\\OpenCV_Test\\Debug\\myhand13.jpg", 1);
 		resize(img, bgr, mSize);
 
 		cvtColor(bgr, hsv, CV_BGR2HSV);
 		inRange(hsv, mMinHSV, mMaxHSV, hsv);
 
 		// Pre processing
+		//int elementSize = 3;
 		medianBlur(hsv, hsv, 5);
 		//Mat element = getStructuringElement(MORPH_ELLIPSE, Size(2 * elementSize + 1, 2 * elementSize + 1), Point(elementSize, elementSize));
 		//dilate(hsv, hsv, element);
-		//morphOps(hsv);
 
 		// Contour detection
 		vector<vector<Point>> contours;
@@ -179,13 +222,15 @@ int main()
 				if (contourArea(contours[i]) > contourArea(contours[largestContour]))
 					largestContour = i;
 			}
-			drawContours(bgr, contours, largestContour, Scalar(0, 0, 255), 1);
+			drawContours(bgr, contours, largestContour, Scalar(0, 255, 0), 1);
 
 			vector<int> hullIndexes;
 			convexHull(Mat(contours[largestContour]), hullIndexes, false);
 
-			//approxPolyDP(Mat(hull[0]), hull[0], 18, true);
-			//drawContours(mFrame, hull, 0, Scalar(0, 255, 255), 2);
+			//vector<Point> aa;
+			//convexHull(Mat(contours[largestContour]), aa, false);
+			//approxPolyDP(aa, aa, 24, true);
+			//polylines(bgr, aa, true, Scalar(255, 0, 0), 1);
 
 			if (!hullIndexes.empty())
 			{
@@ -195,95 +240,98 @@ int main()
 				listDefectsSize = defects.size();
 				if (listDefectsSize >= MIN_HAND_DEFECTS)
 				{
-					double angle;
-					double length;
-					float radius;
+					float angle;
+					float length;
 					int i = 0, j = 0;
 
-					vector<Point2f> palmPoints;
 					Point2f averagePoint;
-					palmPoints.reserve(MAX_PALM_POINTS);
+					vector<Point2f> palmPoints;
+					palmPoints.reserve(MAX_HAND_DEFECTS);
 
-					int fingerIndex = 0;
-					char sText[16] = {0};
 
 					// The convexity defects which have depth larger than a threshold value tend to appear around the palm portion
 					for (; i < listDefectsSize; ++i)
 					{
-						length = defects[i][3] / 256.0;
+						length = defects[i][3] / 256.0f;
 						angle = innerAngle(contours[largestContour][defects[i][0]], contours[largestContour][defects[i][1]], contours[largestContour][defects[i][2]]);
-						if (length >= MIN_LENGTH_VARIATION &&
-							length <= MAX_LENGTH_VARIATION //&&
-							//angle >= MIN_PALM_INNER_ANGLE &&
-							/*angle <= MAX_PALM_INNER_ANGLE*/)
-						{
-							circle(bgr, contours[largestContour][defects[i][2]], 4, Scalar(0, 0, 255), 2);
-							_itoa(fingerIndex++, sText, 10);
-							putText(bgr, sText, contours[largestContour][defects[i][2]], CV_FONT_NORMAL, 0.7, Scalar(255, 255, 255));
 
-							palmPoints.push_back(contours[largestContour][defects[i][2]]); // check for MAX_PALM_POINTS
+						// Hand defect thresholds
+						if (length >= MIN_FINGER_LENGTH &&
+							length <= MAX_FINGER_LENGTH &&
+							angle >= MIN_INNER_ANGLE &&
+							angle <= MAX_INNER_ANGLE)
+						{
+							if (j < MAX_HAND_DEFECTS)
+							{
+								listDefects[j].startPoint = contours[largestContour][defects[i][0]];
+								listDefects[j].endPoint = contours[largestContour][defects[i][1]];
+								listDefects[j].farthestPoint = contours[largestContour][defects[i][2]];
+								listDefects[j].length = length;
+								++j;
+							}
+							else
+							{
+								j = 0;
+								break;
+							}
+						}
+
+						// Palm thresholds
+						if (length >= MIN_PALM_LENGTH &&
+							length <= MAX_PALM_LENGTH &&
+							angle >= MIN_PALM_INNER_ANGLE &&
+							angle <= MAX_PALM_INNER_ANGLE)
+						{
+							palmPoints.push_back(contours[largestContour][defects[i][2]]);
 							averagePoint.x += contours[largestContour][defects[i][2]].x;
 							averagePoint.y += contours[largestContour][defects[i][2]].y;
 						}
 					}
 
-					averagePoint.x /= palmPoints.size();
-					averagePoint.y /= palmPoints.size();
-					circle(bgr, averagePoint, 4, Scalar(255, 255, 0), 2);
-
-					minEnclosingCircle(palmPoints, mCenter, radius);
-
-					averagePoint.x = (averagePoint.x + mCenter.x) / 2.0;
-					averagePoint.y = (averagePoint.y + mCenter.y) / 2.0;
-
-					circle(bgr, mCenter, radius, Scalar(255, 0, 0));
-					circle(bgr, mCenter, 4, Scalar(0, 255, 255), 2);
-					circle(bgr, averagePoint, 4, Scalar(255, 255, 255), 2);
-
-					double d[3];
-					int index = find3ClosestPoints(palmPoints, d);
-					if (index != -1)
+					if (j >= MIN_HAND_DEFECTS && j <= MAX_HAND_DEFECTS)
 					{
-						Point2f midPoint;
-						midPoint.x = (palmPoints[index - 1].x + palmPoints[index + 1].x) / 2.0;
-						midPoint.y = (palmPoints[index - 1].y + palmPoints[index + 1].y) / 2.0;
-						circle(bgr, midPoint, 4, Scalar(0, 255, 0), 2);
+						minEnclosingCircle(palmPoints, mPalmCenter2, mPalmRadius2);
 
-					}
+						// Combine the average position of all the depth points with the min enclosing circle center
+						averagePoint.x += mPalmCenter2.x;
+						averagePoint.y += mPalmCenter2.y;
+						averagePoint.x /= palmPoints.size() + 1;
+						averagePoint.y /= palmPoints.size() + 1;
 
-
-
-					for (i = 0; i < listDefectsSize; ++i)
-					{
-						angle = innerAngle(contours[largestContour][defects[i][0]], contours[largestContour][defects[i][1]], contours[largestContour][defects[i][2]]);
-						if (angle >= MIN_INNER_ANGLE &&
-							angle <= MAX_INNER_ANGLE)
+						float d[3];
+						//int index = find3ClosestPoints(palmPoints, d);
+						int index = find3ClosestPoints(listDefects, j, d);
+						if (index != -1)
 						{
-							listDefects[j].startPoint = contours[largestContour][defects[i][0]];
-							listDefects[j].endPoint = contours[largestContour][defects[i][1]];
-							listDefects[j].farthestPoint = contours[largestContour][defects[i][2]];
-							listDefects[j].innerAngle = angle;
-							listDefects[j].centAngle[0] = arcTang(mCenter, listDefects[j].startPoint);
-							listDefects[j].centAngle[1] = arcTang(mCenter, listDefects[j].endPoint);
-							listDefects[j].unitCircle[0] = getUnitCircle(listDefects[j].centAngle[0]);
-							listDefects[j].unitCircle[1] = getUnitCircle(listDefects[j].centAngle[1]);
-							listDefects[j].length = distanceP2P(listDefects[j].startPoint, listDefects[j].farthestPoint);
+							Point2f palmPoint = listDefects[index + 1].farthestPoint;
+							Point2f midPoint((listDefects[index - 1].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 2.0f,
+											 (listDefects[index - 1].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 2.0f);
+							//Point2f midPoint((listDefects[index - 1].farthestPoint.x + listDefects[index].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 3.0f,
+							//				 (listDefects[index - 1].farthestPoint.y + listDefects[index].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 3.0f);
 
-							circle(bgr, listDefects[j].startPoint, 4, Scalar(255, 0, 0), 2);
-							circle(bgr, listDefects[j].endPoint, 4, Scalar(0, 255, 0), 2);
-							circle(bgr, listDefects[j].farthestPoint, 4, Scalar(0, 0, 255), 2);
-							line(bgr, listDefects[j].startPoint, listDefects[j].endPoint, Scalar(0, 255, 0), 1);
-							line(bgr, listDefects[j].startPoint, listDefects[j].farthestPoint, Scalar(0, 255, 0), 1);
-							line(bgr, listDefects[j].endPoint, listDefects[j].farthestPoint, Scalar(0, 255, 0), 1);
+							angle = arcTang(midPoint, palmPoint, true);
+							mPalmRadius = listDefects[index].length * DELTA_LENGTH;
 
-							++j;
+							// Rotate mPalmCenter point by angle
+							mPalmCenter.x = -sin(angle) * mPalmRadius;
+							mPalmCenter.y = cos(angle) * mPalmRadius;
+
+							// Translate mPalmCenter to midPoint
+							mPalmCenter.x += midPoint.x;
+							mPalmCenter.y -= midPoint.y; // Inverted y on OpenCV
+							//mPalmCenter.y = mPalmCenter.y - midPoint.y;
+							mPalmCenter.y *= -1; // Inverted y on OpenCV
+
+							// Draw the results
+							//circle(bgr, midPoint, 4, Scalar(0, 0, 255), 2);
+							//circle(bgr, palmPoint, 4, Scalar(0, 255, 0), 2);
+							//circle(bgr, mPalmCenter, 4, Scalar(255, 0, 0), 2);
+							//line(bgr, midPoint, palmPoint, Scalar(0, 255, 0), 1);
+							//line(bgr, midPoint, mPalmCenter, Scalar(0, 255, 0), 1);
+							//line(bgr, palmPoint, mPalmCenter, Scalar(0, 255, 0), 1);
+							draw(bgr, listDefects, j);
 						}
 					}
-
-					//if (j >= MIN_HAND_DEFECTS && j <= MAX_HAND_DEFECTS)
-					//{
-					//}
-
 				}
 			}
 		}
