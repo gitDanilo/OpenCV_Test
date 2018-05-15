@@ -305,18 +305,18 @@ int main()
 						int index = find3ClosestPoints(listDefects, j, d);
 						if (index != -1)
 						{
-							Point2f palmPoint = listDefects[index + 1].farthestPoint;
+							Point2f palmPoint = listDefects[(index + 1) % j].farthestPoint;
 							Point2f midPoint;
 
 							if (index == 0)
 							{
-								midPoint.x = (listDefects[j - 1].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 2.0f;
-								midPoint.y = (listDefects[j - 1].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 2.0f;
+								midPoint.x = (listDefects[j - 1].farthestPoint.x + listDefects[(index + 1) % j].farthestPoint.x) / 2.0f;
+								midPoint.y = (listDefects[j - 1].farthestPoint.y + listDefects[(index + 1) % j].farthestPoint.y) / 2.0f;
 							}
 							else
 							{
-								midPoint.x = (listDefects[index - 1].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 2.0f;
-								midPoint.y = (listDefects[index - 1].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 2.0f;
+								midPoint.x = (listDefects[index - 1].farthestPoint.x + listDefects[(index + 1) % j].farthestPoint.x) / 2.0f;
+								midPoint.y = (listDefects[index - 1].farthestPoint.y + listDefects[(index + 1) % j].farthestPoint.y) / 2.0f;
 							}
 
 							//Point2f midPoint((listDefects[index - 1].farthestPoint.x + listDefects[index].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 3.0f,
