@@ -54,7 +54,7 @@ inline float distanceP2P(Point2f a, Point2f b)
 // Returns the closest 3 points that respect the min and max threshold distances
 int find3ClosestPoints(const vector<Point2f> &points, float *d)
 {
-	if (points.size() < 4 && d == NULL)
+	if (points.size() < MIN_HAND_DEFECTS && d == NULL)
 		return -1;
 
 	d[0] = d[1] = d[2] = 0;
@@ -97,7 +97,7 @@ int find3ClosestPoints(const vector<Point2f> &points, float *d)
 // Returns the closest 3 points that respect the min and max threshold distances
 int find3ClosestPoints(const PHandDefect defects, int defectsSize, float *d)
 {
-	if (defectsSize < 4 && d == NULL)
+	if (defectsSize < MIN_HAND_DEFECTS && d == NULL)
 		return -1;
 
 	d[0] = d[1] = d[2] = 0;
@@ -253,7 +253,9 @@ int main()
 					for (; i < listDefectsSize; ++i)
 					{
 						length = defects[i][3] / 256.0f;
-						angle = innerAngle(contours[largestContour][defects[i][0]], contours[largestContour][defects[i][1]], contours[largestContour][defects[i][2]]);
+						angle = innerAngle(contours[largestContour][defects[i][0]],
+										   contours[largestContour][defects[i][1]],
+										   contours[largestContour][defects[i][2]]);
 
 						// Hand defect thresholds
 						if (length >= MIN_FINGER_LENGTH &&
@@ -304,8 +306,19 @@ int main()
 						if (index != -1)
 						{
 							Point2f palmPoint = listDefects[index + 1].farthestPoint;
-							Point2f midPoint((listDefects[index - 1].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 2.0f,
-											 (listDefects[index - 1].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 2.0f);
+							Point2f midPoint;
+
+							if (index == 0)
+							{
+								midPoint.x = (listDefects[j - 1].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 2.0f;
+								midPoint.y = (listDefects[j - 1].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 2.0f;
+							}
+							else
+							{
+								midPoint.x = (listDefects[index - 1].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 2.0f;
+								midPoint.y = (listDefects[index - 1].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 2.0f;
+							}
+
 							//Point2f midPoint((listDefects[index - 1].farthestPoint.x + listDefects[index].farthestPoint.x + listDefects[index + 1].farthestPoint.x) / 3.0f,
 							//				 (listDefects[index - 1].farthestPoint.y + listDefects[index].farthestPoint.y + listDefects[index + 1].farthestPoint.y) / 3.0f);
 
